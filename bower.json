@@ -1,0 +1,24 @@
+{
+  "name": "OpenSeadragon",
+  "version": "0.9.130",
+  "homepage": "http://openseadragon.github.io/",
+  "authors": [
+    "iangilman"
+  ],
+  "description": "Provides a smooth, zoomable user interface for HTML/Javascript.",
+  "main": "./src/openseadragon.js",
+  "keywords": [
+    "zoomable",
+    "viewer",
+    "image",
+    "dzi"
+  ],
+  "license": "New BSD",
+  "ignore": [
+    "**/.*",
+    "node_modules",
+    "bower_components",
+    "test",
+    "tests"
+  ]
+}
