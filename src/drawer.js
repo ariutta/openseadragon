@@ -44,14 +44,8 @@ var DEVICE_SCREEN       = $.getWindowSize(),
         ( BROWSER == $.BROWSERS.SAFARI && BROWSER_VERSION >= 4 ) ||
         ( BROWSER == $.BROWSERS.CHROME && BROWSER_VERSION >= 2 ) ||
         ( BROWSER == $.BROWSERS.IE     && BROWSER_VERSION >= 9 )
-    ),
+    );
 
-    USE_CANVAS = SUBPIXEL_RENDERING &&
-        !( DEVICE_SCREEN.x <= 400 || DEVICE_SCREEN.y <= 400 ) &&
-        !( navigator.appVersion.match( 'Mobile' ) ) &&
-        $.isFunction( document.createElement( "canvas" ).getContext );
-
-//console.error( 'USE_CANVAS ' + USE_CANVAS );
 
 /**
  * @class
@@ -124,9 +118,10 @@ $.Drawer = function( options ) {
 
     }, options );
 
+    this.useCanvas  = $.supportsCanvas && ( this.viewer ? this.viewer.useCanvas : true );
     this.container  = $.getElement( this.element );
-    this.canvas     = $.makeNeutralElement( USE_CANVAS ? "canvas" : "div" );
-    this.context    = USE_CANVAS ? this.canvas.getContext( "2d" ) : null;
+    this.canvas     = $.makeNeutralElement( this.useCanvas ? "canvas" : "div" );
+    this.context    = this.useCanvas ? this.canvas.getContext( "2d" ) : null;
     this.normHeight = this.source.dimensions.y / this.source.dimensions.x;
     this.element    = this.container;
 
@@ -205,7 +200,6 @@ $.Drawer.prototype = {
         this.updateAgain = true;
         if( this.viewer ){
             this.viewer.raiseEvent( 'add-overlay', {
-                viewer: this.viewer,
                 element: element,
                 location: options.location,
                 placement: options.placement
@@ -237,7 +231,6 @@ $.Drawer.prototype = {
         }
         if( this.viewer ){
             this.viewer.raiseEvent( 'update-overlay', {
-                viewer: this.viewer,
                 element: element,
                 location: location,
                 placement: placement
@@ -267,7 +260,6 @@ $.Drawer.prototype = {
         }
         if( this.viewer ){
             this.viewer.raiseEvent( 'remove-overlay', {
-                viewer: this.viewer,
                 element: element
             });
         }
@@ -286,9 +278,7 @@ $.Drawer.prototype = {
             this.updateAgain = true;
         }
         if( this.viewer ){
-            this.viewer.raiseEvent( 'clear-overlay', {
-                viewer: this.viewer
-            });
+            this.viewer.raiseEvent( 'clear-overlay', {} );
         }
         return this;
     },
@@ -410,7 +400,7 @@ $.Drawer.prototype = {
     },
 
     canRotate: function() {
-        return USE_CANVAS;
+        return this.useCanvas;
     }
 };
 
@@ -481,9 +471,7 @@ function updateViewport( drawer ) {
     drawer.updateAgain = false;
 
     if( drawer.viewer ){
-        drawer.viewer.raiseEvent( 'update-viewport', {
-            viewer: drawer.viewer
-        });
+        drawer.viewer.raiseEvent( 'update-viewport', {} );
     }
 
     var tile,
@@ -529,7 +517,7 @@ function updateViewport( drawer ) {
 
     //TODO
     drawer.canvas.innerHTML   = "";
-    if ( USE_CANVAS ) {
+    if ( drawer.useCanvas ) {
         if( drawer.canvas.width  != viewportSize.x ||
             drawer.canvas.height != viewportSize.y ){
             drawer.canvas.width  = viewportSize.x;
@@ -658,7 +646,6 @@ function updateLevel( drawer, haveDrawn, drawLevel, level, levelOpacity, levelVi
 
     if( drawer.viewer ){
         drawer.viewer.raiseEvent( 'update-level', {
-            viewer: drawer.viewer,
             havedrawn: haveDrawn,
             level: level,
             opacity: levelOpacity,
@@ -722,7 +709,6 @@ function updateTile( drawer, drawLevel, haveDrawn, x, y, level, levelOpacity, le
 
     if( drawer.viewer ){
         drawer.viewer.raiseEvent( 'update-tile', {
-            viewer: drawer.viewer,
             tile: tile
         });
     }
@@ -1169,6 +1155,7 @@ function drawTiles( drawer, lastDrawn ){
                 //$.console.log("Rendering collection tile %s | %s | %s", tile.y, tile.y, position);
                 if( tileSource ){
                     drawer.collectionOverlays[ tileKey ] = viewer = new $.Viewer({
+                        hash:                   viewport.viewer.hash + "-" + tileKey,
                         element:                $.makeNeutralElement( "div" ),
                         mouseNavEnabled:        false,
                         showNavigator:          false,
@@ -1208,7 +1195,7 @@ function drawTiles( drawer, lastDrawn ){
 
         } else {
 
-            if ( USE_CANVAS ) {
+            if ( drawer.useCanvas ) {
                 // TODO do this in a more performant way
                 // specifically, don't save,rotate,restore every time we draw a tile
                 if( drawer.viewport.degrees !== 0 ) {
@@ -1236,7 +1223,6 @@ function drawTiles( drawer, lastDrawn ){
 
         if( drawer.viewer ){
             drawer.viewer.raiseEvent( 'tile-drawn', {
-                viewer: drawer.viewer,
                 tile: tile
             });
         }
@@ -1272,7 +1258,7 @@ function restoreRotationChanges( tile, canvas, context ){
 
 function drawDebugInfo( drawer, tile, count, i ){
 
-    if ( USE_CANVAS ) {
+    if ( drawer.useCanvas ) {
         drawer.context.save();
         drawer.context.lineWidth = 2;
         drawer.context.font = 'small-caps bold 13px ariel';

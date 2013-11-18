@@ -28,11 +28,11 @@
     asyncTest('Open', function() {
         ok(viewer, 'Viewer exists');
 
-        var openHandler = function(eventSender, eventData) {
+        var openHandler = function(event) {
             viewer.removeHandler('open', openHandler);
             ok(true, 'Open event was sent');
-            equal(eventSender, viewer, 'Sender of open event was viewer');
-            ok(eventData, 'Handler also received event data');
+            ok(event, 'Handler received event data');
+            equal(event.eventSource, viewer, 'Sender of open event was viewer');
             ok(viewer.viewport, 'Viewport exists');
             ok(viewer.source, 'source exists');
             ok(viewer._updateRequestId, 'timer is on');
@@ -46,12 +46,12 @@
     asyncTest('Open Error Handling', function() {
         ok(viewer, 'Viewer exists');
 
-        viewer.addHandler('open', function(eventSender, eventData) {
+        viewer.addHandler('open', function(event) {
             ok(false, "The open event should not fire for failed opens");
             start();
         });
 
-        viewer.addHandler('open-failed', function(eventSender, eventData) {
+        viewer.addHandler('open-failed', function(event) {
             ok(true, "The open-failed event should be fired when the source 404s");
 
             equal($(".openseadragon-message").length, 1, "Open failures should display a message");
@@ -73,12 +73,12 @@
             equal(viewport.getZoom(), 1, 'We start out unzoomed');
 
             var zoomHandler = function() {
-                viewer.removeHandler('animationfinish', zoomHandler);
+                viewer.removeHandler('animation-finish', zoomHandler);
                 equal(viewport.getZoom(), 2, 'Zoomed correctly');
                 start();
             };
 
-            viewer.addHandler('animationfinish', zoomHandler);
+            viewer.addHandler('animation-finish', zoomHandler);
             viewport.zoomTo(2);
         });
         viewer.open('/test/data/testpattern.dzi');
@@ -93,13 +93,13 @@
             ok(center.x === 0.5 && center.y === 0.5, 'We start out unpanned');
 
             var panHandler = function() {
-                viewer.removeHandler('animationfinish', panHandler);
+                viewer.removeHandler('animation-finish', panHandler);
                 center = viewport.getCenter();
                 ok(center.x === 0.1 && center.y === 0.1, 'Panned correctly');
                 start();
             };
 
-            viewer.addHandler('animationfinish', panHandler);
+            viewer.addHandler('animation-finish', panHandler);
             viewport.panTo(new OpenSeadragon.Point(0.1, 0.1));
         });
 
@@ -119,25 +119,25 @@
             var viewport = viewer.viewport,
                 center = viewport.getCenter();
 
-            viewer.removeHandler('animationfinish', stage1);
+            viewer.removeHandler('animation-finish', stage1);
 
             ok(center.x !== 0.5 && center.y !== 0.5, 'We start out panned');
             notEqual(viewport.getZoom(), 1, 'We start out zoomed');
 
             var homeHandler = function() {
-                viewer.removeHandler('animationfinish', homeHandler);
+                viewer.removeHandler('animation-finish', homeHandler);
                 center = viewport.getCenter();
                 ok(center.x === 0.5 && center.y === 0.5, 'We end up unpanned');
                 equal(viewport.getZoom(), 1, 'We end up unzoomed');
                 start();
             };
 
-            viewer.addHandler('animationfinish', homeHandler);
+            viewer.addHandler('animation-finish', homeHandler);
             viewport.goHome(true);
         }
 
         viewer.addHandler("open", opener);
-        viewer.addHandler("animationfinish", stage1);
+        viewer.addHandler("animation-finish", stage1);
 
         viewer.open('/test/data/testpattern.dzi');
     });
@@ -152,14 +152,14 @@
             equal(viewport.getZoom(), 1, 'We start out unzoomed');
 
             var clickHandler = function() {
-                viewer.removeHandler('animationfinish', clickHandler);
+                viewer.removeHandler('animation-finish', clickHandler);
                 center = viewport.getCenter();
                 ok(center.x > 0.37 && center.x < 0.38 && center.y > 0.37 && center.y < 0.38, 'Panned correctly');
                 equal(viewport.getZoom(), 2, 'Zoomed correctly');
                 start();
             };
 
-            viewer.addHandler('animationfinish', clickHandler);
+            viewer.addHandler('animation-finish', clickHandler);
             Util.simulateViewerClickWithDrag( {
                 viewer: viewer,
                 widthFactor: 0.25,
@@ -174,22 +174,80 @@
     });
 
     // ----------
-    asyncTest('Fullscreen', function() {
+    asyncTest('FullPage', function() {
         viewer.addHandler("open", function () {
             ok(!viewer.isFullPage(), 'Started out not fullpage');
             ok(!$(viewer.element).hasClass('fullpage'),
                 'No fullpage class on div');
 
-            viewer.setFullPage(true);
-            ok(viewer.isFullPage(), 'Enabled fullpage');
-            ok($(viewer.element).hasClass('fullpage'),
-                'Fullpage class added to div');
+            var checkEnteringPreFullPage = function(event) {
+                viewer.removeHandler('pre-full-page', checkEnteringPreFullPage);
+                ok(event.fullPage, 'Switching to fullpage');
+                ok(!viewer.isFullPage(), 'Not yet fullpage');
+            };
 
-            viewer.setFullPage(false);
-            ok(!viewer.isFullPage(), 'Disabled fullpage');
-            ok(!$(viewer.element).hasClass('fullpage'),
-                'Fullpage class removed from div');
+            var checkEnteringFullPage = function(event) {
+                viewer.removeHandler('full-page', checkEnteringFullPage);
+                ok(event.fullPage, 'Switched to fullpage');
+                ok(viewer.isFullPage(), 'Enabled fullpage');
+                ok($(viewer.element).hasClass('fullpage'),
+                    'Fullpage class added to div');
+
+                var checkExitingPreFullPage = function(event) {
+                    viewer.removeHandler('pre-full-page', checkExitingPreFullPage);
+                    ok(!event.fullPage, 'Exiting fullpage');
+                    ok(viewer.isFullPage(), 'Still fullpage');
+                };
+
+                var checkExitingFullPage = function(event) {
+                    viewer.removeHandler('full-page', checkExitingFullPage);
+                    ok(!event.fullPage, 'Exiting fullpage');
+                    ok(!viewer.isFullPage(), 'Disabled fullpage');
+                    ok(!$(viewer.element).hasClass('fullpage'),
+                        'Fullpage class removed from div');
+                    start();
+                };
+
+                viewer.addHandler("pre-full-page", checkExitingPreFullPage);
+                viewer.addHandler("full-page", checkExitingFullPage);
+                viewer.setFullPage(false);
+            };
+            viewer.addHandler("pre-full-page", checkEnteringPreFullPage);
+            viewer.addHandler("full-page", checkEnteringFullPage);
+            viewer.setFullPage(true);
+        });
+
+        viewer.open('/test/data/testpattern.dzi');
+    });
+
+    asyncTest('FullScreen', function() {
+
+        if (!OpenSeadragon.supportsFullScreen) {
+            expect(0);
             start();
+            return;
+        }
+
+        viewer.addHandler("open", function () {
+            ok(!OpenSeadragon.isFullScreen(), 'Started out not fullscreen');
+
+            var checkEnteringPreFullScreen = function(event) {
+                viewer.removeHandler('pre-full-screen', checkEnteringPreFullScreen);
+                ok(event.fullScreen, 'Switching to fullscreen');
+                ok(!OpenSeadragon.isFullScreen(), 'Not yet fullscreen');
+            };
+
+            // The fullscreen mode is always denied during tests so we are
+            // exiting directly.
+            var checkExitingFullScreen = function(event) {
+                viewer.removeHandler('full-screen', checkExitingFullScreen);
+                ok(!event.fullScreen, 'Exiting fullscreen');
+                ok(!OpenSeadragon.isFullScreen(), 'Disabled fullscreen');
+                start();
+            };
+            viewer.addHandler("pre-full-screen", checkEnteringPreFullScreen);
+            viewer.addHandler("full-screen", checkExitingFullScreen);
+            viewer.setFullScreen(true);
         });
 
         viewer.open('/test/data/testpattern.dzi');

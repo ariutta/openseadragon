@@ -26,11 +26,12 @@
 
     // ----------
     asyncTest( 'addHandler without userData', function () {
-        var openHandler = function ( eventSender, eventData ) {
+        var openHandler = function ( event ) {
             viewer.removeHandler( 'open', openHandler );
-            ok( eventData, 'Event handler received event data' );
-            if ( eventData ) {
-                strictEqual( eventData.userData, null, 'User data defaulted to null' );
+            ok( event, 'Event handler received event data' );
+            if ( event ) {
+                strictEqual( event.eventSource, viewer, 'eventSource sent, eventSource is viewer' );
+                strictEqual( event.userData, null, 'User data defaulted to null' );
             }
             viewer.close();
             start();
@@ -45,12 +46,12 @@
         var userData = { item1: 'Test user data', item2: Math.random() },
             originalUserData = { item1: userData.item1, item2: userData.item2 };
 
-        var openHandler = function ( eventSender, eventData ) {
+        var openHandler = function ( event ) {
             viewer.removeHandler( 'open', openHandler );
-            ok( eventData, 'Event handler received event data' );
-            ok( eventData && eventData.userData, 'Event handler received user data' );
-            if ( eventData && eventData.userData ) {
-                deepEqual( eventData.userData, originalUserData, 'User data was untouched' );
+            ok( event, 'Event handler received event data' );
+            ok( event && event.userData, 'Event handler received user data' );
+            if ( event && event.userData ) {
+                deepEqual( event.userData, originalUserData, 'User data was untouched' );
             }
             viewer.close();
             start();
@@ -61,19 +62,52 @@
     } );
 
     // ----------
-    asyncTest( 'canvas-drag canvas-release canvas-click', function () {
-        var dragCount = 10,
-            dragMovesHandled = 0,
-            releasesHandled = 0,
-            releasesExpected = 1;
+    asyncTest( 'MouseTracker, EventSource canvas-drag canvas-release canvas-click', function () {
+        var $canvas = $( viewer.element ).find( '.openseadragon-canvas' ).not( '.navigator .openseadragon-canvas' ),
+            mouseTracker = null,
+            userData = { item1: 'Test user data', item2: Math.random() },
+            originalUserData = { item1: userData.item1, item2: userData.item2 },
+            dragCount = 10,
+            dragsHandledEventSource = 0,
+            releasesHandledEventSource = 0,
+            clicksHandledEventSource = 0,
+            eventsHandledMouseTracker = 0,
+            eventSourcePassedMouseTracker = 0,
+            originalEventsPassedMouseTracker = 0,
+            eventsHandledViewer = 0,
+            originalEventsPassedViewer = 0,
+            releasesExpected = 1,
+            clicksExpected = 1;
 
-        var openHandler = function ( eventSender, eventData ) {
-            viewer.removeHandler( 'open', openHandler );
+        var onOpen = function ( event ) {
+            viewer.removeHandler( 'open', onOpen );
 
-            viewer.addHandler( 'canvas-drag', canvasDragHandler );
-            viewer.addHandler( 'canvas-release', canvasReleaseHandler );
-            viewer.addHandler( 'canvas-click', canvasClickHandler );
+            viewer.addHandler( 'canvas-drag', onEventSourceDrag );
+            viewer.addHandler( 'canvas-release', onEventSourceRelease );
+            viewer.addHandler( 'canvas-click', onEventSourceClick );
 
+            mouseTracker = new OpenSeadragon.MouseTracker( {
+                element: $canvas[0],
+                userData: userData,
+                clickTimeThreshold: OpenSeadragon.DEFAULT_SETTINGS.clickTimeThreshold,
+                clickDistThreshold: OpenSeadragon.DEFAULT_SETTINGS.clickDistThreshold,
+                focusHandler: onMouseTrackerFocus,
+                blurHandler: onMouseTrackerBlur,
+                enterHandler: onMouseTrackerEnter,
+                pressHandler: onMouseTrackerPress,
+                moveHandler: onMouseTrackerMove,
+                dragHandler: onMouseTrackerDrag,
+                releaseHandler: onMouseTrackerRelease,
+                clickHandler: onMouseTrackerClick,
+                exitHandler: onMouseTrackerExit
+            } ).setTracking( true );
+
+            var event = {
+                clientX:1,
+                clientY:1
+            };
+
+            $canvas.simulate( 'focus', event );
             Util.simulateViewerClickWithDrag( {
                 viewer: viewer,
                 widthFactor: 0.25,
@@ -82,27 +116,167 @@
                 dragDx: 1,
                 dragDy: 1
             } );
+            $canvas.simulate( 'blur', event );
         };
 
-        var canvasDragHandler = function ( eventSender, eventData ) {
-            dragMovesHandled++;
+        var checkOriginalEventReceivedViewer = function ( event ) {
+            eventsHandledViewer++;
+            //TODO Provide a better check for the original event...simulate doesn't currently extend the object 
+            //   with arbitrary user data.
+            if ( event && event.originalEvent ) {
+                originalEventsPassedViewer++;
+            }
         };
 
-        var canvasReleaseHandler = function ( eventSender, eventData ) {
-            releasesHandled++;
+        var onEventSourceDrag = function ( event ) {
+            checkOriginalEventReceivedViewer( event );
+            dragsHandledEventSource++;
         };
 
-        var canvasClickHandler = function ( eventSender, eventData ) {
-            viewer.removeHandler( 'canvas-drag', canvasDragHandler );
-            viewer.removeHandler( 'canvas-release', canvasReleaseHandler );
-            viewer.removeHandler( 'canvas-click', canvasClickHandler );
-            equal( dragMovesHandled, dragCount, "'canvas-drag' event count matches 'mousemove' event count (" + dragCount + ")" );
-            equal( releasesHandled, releasesExpected, "'canvas-release' event count matches expected (" + releasesExpected + ")" );
+        var onEventSourceRelease = function ( event ) {
+            checkOriginalEventReceivedViewer( event );
+            releasesHandledEventSource++;
+        };
+
+        var onEventSourceClick = function ( event ) {
+            checkOriginalEventReceivedViewer( event );
+            clicksHandledEventSource++;
+        };
+
+        var checkOriginalEventReceived = function ( event ) {
+            eventsHandledMouseTracker++;
+            if ( event && event.eventSource === mouseTracker ) {
+                eventSourcePassedMouseTracker++;
+            }
+            //TODO Provide a better check for the original event...simulate doesn't currently extend the object 
+            //   with arbitrary user data.
+            if ( event && event.originalEvent ) {
+                originalEventsPassedMouseTracker++;
+            }
+        };
+
+        var onMouseTrackerFocus = function ( event ) {
+            checkOriginalEventReceived( event );
+        };
+
+        var onMouseTrackerBlur = function ( event ) {
+            checkOriginalEventReceived( event );
+        };
+
+        var onMouseTrackerEnter = function ( event ) {
+            checkOriginalEventReceived( event );
+        };
+
+        var onMouseTrackerPress = function ( event ) {
+            checkOriginalEventReceived( event );
+        };
+
+        var onMouseTrackerMove = function ( event ) {
+            checkOriginalEventReceived( event );
+        };
+
+        var onMouseTrackerDrag = function ( event ) {
+            checkOriginalEventReceived( event );
+        };
+
+        var onMouseTrackerRelease = function ( event ) {
+            checkOriginalEventReceived( event );
+        };
+
+        var onMouseTrackerClick = function ( event ) {
+            checkOriginalEventReceived( event );
+        };
+
+        var onMouseTrackerExit = function ( event ) {
+            checkOriginalEventReceived( event );
+
+            mouseTracker.destroy();
+            viewer.removeHandler( 'canvas-drag', onEventSourceDrag );
+            viewer.removeHandler( 'canvas-release', onEventSourceRelease );
+            viewer.removeHandler( 'canvas-click', onEventSourceClick );
+
+            equal( dragsHandledEventSource, dragCount, "'canvas-drag' event count matches 'mousemove' event count (" + dragCount + ")" );
+            equal( releasesHandledEventSource, releasesExpected, "'canvas-release' event count matches expected (" + releasesExpected + ")" );
+            equal( clicksHandledEventSource, releasesExpected, "'canvas-click' event count matches expected (" + releasesExpected + ")" );
+            equal( originalEventsPassedViewer, eventsHandledViewer, "Original event received count matches expected (" + eventsHandledViewer + ")" );
+
+            equal( eventSourcePassedMouseTracker, eventsHandledMouseTracker, "Event source received count matches expected (" + eventsHandledMouseTracker + ")" );
+            equal( originalEventsPassedMouseTracker, eventsHandledMouseTracker, "Original event received count matches expected (" + eventsHandledMouseTracker + ")" );
+            deepEqual( event.userData, originalUserData, 'MouseTracker userData was untouched' );
+
             viewer.close();
             start();
         };
 
-        viewer.addHandler( 'open', openHandler );
+        viewer.addHandler( 'open', onOpen );
+        viewer.open( '/test/data/testpattern.dzi' );
+    } );
+
+    // ----------
+    asyncTest( 'MouseTracker preventDefaultAction', function () {
+        var $canvas = $( viewer.element ).find( '.openseadragon-canvas' ).not( '.navigator .openseadragon-canvas' ),
+            tracker = viewer.innerTracker,
+            origClickHandler,
+            origDragHandler,
+            dragCount = 10,
+            originalZoom = 0,
+            originalBounds = null;
+
+        var onOpen = function ( event ) {
+            viewer.removeHandler( 'open', onOpen );
+
+            // Hook viewer events to set preventDefaultAction
+            origClickHandler = tracker.clickHandler;
+            tracker.clickHandler = function ( event ) {
+                event.preventDefaultAction = true;
+                return origClickHandler( event );
+            };
+            origDragHandler = tracker.dragHandler;
+            tracker.dragHandler = function ( event ) {
+                event.preventDefaultAction = true;
+                return origDragHandler( event );
+            };
+
+            originalZoom = viewer.viewport.getZoom();
+            originalBounds = viewer.viewport.getBounds();
+
+            var event = {
+                clientX:1,
+                clientY:1
+            };
+
+            $canvas.simulate( 'focus', event );
+            // Drag to pan
+            Util.simulateViewerClickWithDrag( {
+                viewer: viewer,
+                widthFactor: 0.25,
+                heightFactor: 0.25,
+                dragCount: dragCount,
+                dragDx: 1,
+                dragDy: 1
+            } );
+            // Click to zoom
+            Util.simulateViewerClickWithDrag( {
+                viewer: viewer,
+                widthFactor: 0.25,
+                heightFactor: 0.25,
+                dragCount: 0,
+                dragDx: 0,
+                dragDy: 0
+            } );
+            $canvas.simulate( 'blur', event );
+
+            var zoom = viewer.viewport.getZoom(),
+                bounds = viewer.viewport.getBounds();
+
+            equal( zoom, originalZoom, "Zoom prevented" );
+            ok( bounds.x == originalBounds.x && bounds.y == originalBounds.y, 'Pan prevented' );
+
+            viewer.close();
+            start();
+        };
+
+        viewer.addHandler( 'open', onOpen );
         viewer.open( '/test/data/testpattern.dzi' );
     } );
 

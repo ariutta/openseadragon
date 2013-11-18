@@ -22,7 +22,7 @@ module.exports = function(grunt) {
         sources = [
             "src/openseadragon.js",
             "src/fullscreen.js",
-            "src/eventhandler.js",
+            "src/eventsource.js",
             "src/mousetracker.js",
             "src/control.js",
             "src/controldock.js",
@@ -34,6 +34,7 @@ module.exports = function(grunt) {
             "src/tilesource.js",
             "src/dzitilesource.js",
             "src/iiiftilesource.js",
+            "src/iiif1_1tilesource.js",
             "src/osmtilesource.js",
             "src/tmstilesource.js",
             "src/legacytilesource.js",

@@ -49,7 +49,7 @@
  * side in M (in pixels), where N is the smallest integer which satisfies
  *      <strong>2^(N+1) >= M</strong>.
  * @class
- * @extends OpenSeadragon.EventHandler
+ * @extends OpenSeadragon.EventSource
  * @param {Number|Object|Array|String} width
  *      If more than a single argument is supplied, the traditional use of
  *      positional parameters is supplied and width is expected to be the width
@@ -104,7 +104,7 @@ $.TileSource = function( width, height, tileSize, tileOverlap, minLevel, maxLeve
 
     //Tile sources supply some events, namely 'ready' when they must be configured
     //by asyncronously fetching their configuration data.
-    $.EventHandler.call( this );
+    $.EventSource.call( this );
 
     //we allow options to override anything we dont treat as
     //required via idiomatic options or which is functionally
@@ -117,15 +117,8 @@ $.TileSource = function( width, height, tileSize, tileOverlap, minLevel, maxLeve
     for ( i = 0; i < arguments.length; i++ ) {
         if ( $.isFunction( arguments[ i ] ) ) {
             callback = arguments[ i ];
-            // TODO Send generic object wrapping readySource as a property (breaking change)
-            // TODO Maybe placeHolderSource should be passed to callback as well for consistency
-            //      with event handler signature?
-            //  Should be this (although technically it works as-is):
-            //this.addHandler( 'ready', function ( placeHolderSource, placeHolderArgs ) {
-            //    callback( placeHolderArgs );
-            //} );
-            this.addHandler( 'ready', function ( placeHolderSource, readySource ) {
-                callback( readySource );
+            this.addHandler( 'ready', function ( event ) {
+                callback( event );
             } );
             //only one callback per constructor
             break;
@@ -299,6 +292,9 @@ $.TileSource.prototype = {
         }
 
         callback = function( data ){
+            if( typeof(data) === "string" ) {
+                data = $.parseXml( data );
+            }
             var $TileSource = $.TileSource.determineType( _this, data, url );
             if ( !$TileSource ) {
                 _this.raiseEvent( 'open-failed', { message: "Unable to load TileSource", source: url } );
@@ -308,10 +304,7 @@ $.TileSource.prototype = {
             options = $TileSource.prototype.configure.apply( _this, [ data, url ]);
             readySource = new $TileSource( options );
             _this.ready = true;
-            // TODO Send generic object wrapping readySource as a property (breaking change)
-            //  Should be this:
-            //_this.raiseEvent( 'ready', { tileSource: readySource } );
-            _this.raiseEvent( 'ready', readySource );
+            _this.raiseEvent( 'ready', { tileSource: readySource } );
         };
 
         if( url.match(/\.js$/) ){
@@ -432,7 +425,7 @@ $.TileSource.prototype = {
 };
 
 
-$.extend( true, $.TileSource.prototype, $.EventHandler.prototype );
+$.extend( true, $.TileSource.prototype, $.EventSource.prototype );
 
 
 /**

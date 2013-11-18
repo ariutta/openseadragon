@@ -51,7 +51,7 @@ var THIS = {},
  * as arguments and we translate a positional call into an idiomatic call.
  *
  * @class
- * @extends OpenSeadragon.EventHandler
+ * @extends OpenSeadragon.EventSource
  * @extends OpenSeadragon.ControlDock
  * @param {Object} options
  * @param {String} options.element Id of Element to attach to,
@@ -100,7 +100,7 @@ $.Viewer = function( options ) {
 
         //internal state and dom identifiers
         id:             options.id,
-        hash:           options.id,
+        hash:           options.hash || options.id,
 
         //dom nodes
         element:        null,
@@ -147,6 +147,15 @@ $.Viewer = function( options ) {
 
     }, $.DEFAULT_SETTINGS, options );
 
+    if ( typeof( this.hash) === "undefined" ) {
+        throw new Error("A hash must be defined, either by specifying options.id or options.hash.");
+    }
+    if ( typeof( THIS[ this.hash ] ) !== "undefined" ) {
+        // We don't want to throw an error here, as the user might have discarded
+        // the previous viewer with the same hash and now want to recreate it.
+        $.console.warn("Hash " + this.hash + " has already been used.");
+    }
+
     //Private state properties
     THIS[ this.hash ] = {
         "fsBoundsDelta":     new $.Point( 1, 1 ),
@@ -170,10 +179,10 @@ $.Viewer = function( options ) {
     this._updateRequestId = null;
 
     //Inherit some behaviors and properties
-    $.EventHandler.call( this );
+    $.EventSource.call( this );
 
-    this.addHandler( 'open-failed', function (source, args) {
-        var msg = $.getString( "Errors.Open-Failed", args.source, args.message);
+    this.addHandler( 'open-failed', function ( event ) {
+        var msg = $.getString( "Errors.OpenFailed", event.eventSource, event.message);
         _this._showMessage( msg );
     });
 
@@ -200,12 +209,19 @@ $.Viewer = function( options ) {
             if( this.tileSources.length > 1 ){
                 THIS[ this.hash ].sequenced = true;
             }
-            initialTileSource = this.tileSources[ 0 ];
+            
+            //Keeps the initial page within bounds
+            if ( this.initialPage > this.tileSources.length - 1 ){
+                this.initialPage = this.tileSources.length - 1;
+            }
+            
+            initialTileSource = this.tileSources[ this.initialPage ];
+            
+            //Update the sequence (aka currrent page) property
+            THIS[ this.hash ].sequence = this.initialPage;
         } else {
             initialTileSource = this.tileSources;
         }
-
-        this.open( initialTileSource );
     }
 
     this.element              = this.element || document.getElementById( this.id );
@@ -260,58 +276,62 @@ $.Viewer = function( options ) {
     this.keyboardCommandArea.innerTracker = new $.MouseTracker({
             _this : this,
             element:            this.keyboardCommandArea,
-            focusHandler:       function(){
-                var point    = $.getElementPosition( this.element );
-                window.scrollTo( 0, point.y );
+            focusHandler:       function( event ){
+                if ( !event.preventDefaultAction ) {
+                    var point    = $.getElementPosition( this.element );
+                    window.scrollTo( 0, point.y );
+                }
             },
 
-            keyHandler:         function(tracker, keyCode, shiftKey){
-                switch( keyCode ){
-                    case 61://=|+
-                        _this.viewport.zoomBy(1.1);
-                        _this.viewport.applyConstraints();
-                        return false;
-                    case 45://-|_
-                        _this.viewport.zoomBy(0.9);
-                        _this.viewport.applyConstraints();
-                        return false;
-                    case 48://0|)
-                        _this.viewport.goHome();
-                        _this.viewport.applyConstraints();
-                        return false;
-                    case 119://w
-                    case 87://W
-                    case 38://up arrow
-                        if (shiftKey) {
+            keyHandler:         function( event ){
+                if ( !event.preventDefaultAction ) {
+                    switch( event.keyCode ){
+                        case 61://=|+
                             _this.viewport.zoomBy(1.1);
-                        } else {
-                            _this.viewport.panBy(new $.Point(0, -0.05));
-                        }
-                        _this.viewport.applyConstraints();
-                        return false;
-                    case 115://s
-                    case 83://S
-                    case 40://down arrow
-                        if (shiftKey) {
+                            _this.viewport.applyConstraints();
+                            return false;
+                        case 45://-|_
                             _this.viewport.zoomBy(0.9);
-                        } else {
-                            _this.viewport.panBy(new $.Point(0, 0.05));
-                        }
-                        _this.viewport.applyConstraints();
-                        return false;
-                    case 97://a
-                    case 37://left arrow
-                        _this.viewport.panBy(new $.Point(-0.05, 0));
-                        _this.viewport.applyConstraints();
-                        return false;
-                    case 100://d
-                    case 39://right arrow
-                        _this.viewport.panBy(new $.Point(0.05, 0));
-                        _this.viewport.applyConstraints();
-                        return false;
-                    default:
-                        //console.log( 'navigator keycode %s', keyCode );
-                        return true;
+                            _this.viewport.applyConstraints();
+                            return false;
+                        case 48://0|)
+                            _this.viewport.goHome();
+                            _this.viewport.applyConstraints();
+                            return false;
+                        case 119://w
+                        case 87://W
+                        case 38://up arrow
+                            if ( event.shift ) {
+                                _this.viewport.zoomBy(1.1);
+                            } else {
+                                _this.viewport.panBy(new $.Point(0, -0.05));
+                            }
+                            _this.viewport.applyConstraints();
+                            return false;
+                        case 115://s
+                        case 83://S
+                        case 40://down arrow
+                            if ( event.shift ) {
+                                _this.viewport.zoomBy(0.9);
+                            } else {
+                                _this.viewport.panBy(new $.Point(0, 0.05));
+                            }
+                            _this.viewport.applyConstraints();
+                            return false;
+                        case 97://a
+                        case 37://left arrow
+                            _this.viewport.panBy(new $.Point(-0.05, 0));
+                            _this.viewport.applyConstraints();
+                            return false;
+                        case 100://d
+                        case 39://right arrow
+                            _this.viewport.panBy(new $.Point(0.05, 0));
+                            _this.viewport.applyConstraints();
+                            return false;
+                        default:
+                            //console.log( 'navigator keycode %s', event.keyCode );
+                            return true;
+                    }
                 }
             }
         }).setTracking( true ); // default state
@@ -343,6 +363,14 @@ $.Viewer = function( options ) {
     this.bindStandardControls();
     this.bindSequenceControls();
 
+    if ( initialTileSource ) {
+        this.open( initialTileSource );
+
+        if ( this.tileSources.length > 1 ) {
+            this._updateSequenceButtons( this.initialPage );
+        }
+    }
+
     for ( i = 0; i < this.customControls.length; i++ ) {
         this.addControl(
             this.customControls[ i ].id,
@@ -356,7 +384,7 @@ $.Viewer = function( options ) {
 
 };
 
-$.extend( $.Viewer.prototype, $.EventHandler.prototype, $.ControlDock.prototype, {
+$.extend( $.Viewer.prototype, $.EventSource.prototype, $.ControlDock.prototype, {
 
 
     /**
@@ -438,11 +466,11 @@ $.extend( $.Viewer.prototype, $.EventHandler.prototype, $.ControlDock.prototype,
         setTimeout(function(){
             if ( $.type( tileSource ) == 'string') {
                 //If its still a string it means it must be a url at this point
-                tileSource = new $.TileSource( tileSource, function( readySource ){
-                    openTileSource( _this, readySource );
+                tileSource = new $.TileSource( tileSource, function( event ){
+                    openTileSource( _this, event.tileSource );
                 });
-                tileSource.addHandler( 'open-failed', function ( name, args ) {
-                    _this.raiseEvent( 'open-failed', args );
+                tileSource.addHandler( 'open-failed', function ( event ) {
+                    _this.raiseEvent( 'open-failed', event );
                 });
 
             } else if ( $.isPlainObject( tileSource ) || tileSource.nodeType ){
@@ -506,12 +534,12 @@ $.extend( $.Viewer.prototype, $.EventHandler.prototype, $.ControlDock.prototype,
         VIEWERS[ this.hash ] = null;
         delete VIEWERS[ this.hash ];
 
-        this.raiseEvent( 'close', { viewer: this } );
+        this.raiseEvent( 'close' );
 
         return this;
     },
 
-    
+
     /**
      * Function to destroy the viewer and clean up everything created by
      * OpenSeadragon.
@@ -569,7 +597,7 @@ $.extend( $.Viewer.prototype, $.EventHandler.prototype, $.ControlDock.prototype,
      */
     setMouseNavEnabled: function( enabled ){
         this.innerTracker.setTracking( enabled );
-        this.raiseEvent( 'mouse-enabled', { enabled: enabled, viewer: this } );
+        this.raiseEvent( 'mouse-enabled', { enabled: enabled } );
         return this;
     },
 
@@ -603,7 +631,7 @@ $.extend( $.Viewer.prototype, $.EventHandler.prototype, $.ControlDock.prototype,
         } else {
             beginControlsAutoHide( this );
         }
-        this.raiseEvent( 'controls-enabled', { enabled: enabled, viewer: this } );
+        this.raiseEvent( 'controls-enabled', { enabled: enabled } );
         return this;
     },
 
@@ -628,35 +656,52 @@ $.extend( $.Viewer.prototype, $.EventHandler.prototype, $.ControlDock.prototype,
      */
     setFullPage: function( fullPage ) {
 
-        var body            = document.body,
-            bodyStyle       = body.style,
-            docStyle        = document.documentElement.style,
-            canvasStyle     = this.canvas.style,
-            _this           = this,
-            oldBounds,
-            newBounds,
-            viewer,
+        var body = document.body,
+            bodyStyle = body.style,
+            docStyle = document.documentElement.style,
+            _this = this,
             hash,
             nodes,
             i;
 
         //dont bother modifying the DOM if we are already in full page mode.
         if ( fullPage == this.isFullPage() ) {
-            return;
+            return this;
         }
 
+        var fullPageEventArgs = {
+            fullPage: fullPage,
+            preventDefaultAction: false
+        };
+        this.raiseEvent( 'pre-full-page', fullPageEventArgs );
+        if ( fullPageEventArgs.preventDefaultAction ) {
+            return this;
+        }
 
         if ( fullPage ) {
 
-            this.bodyOverflow   = bodyStyle.overflow;
-            this.docOverflow    = docStyle.overflow;
-            bodyStyle.overflow  = "hidden";
-            docStyle.overflow   = "hidden";
+            this.elementSize = $.getElementSize( this.element );
+            this.pageScroll = $.getPageScroll();
 
-            this.bodyWidth      = bodyStyle.width;
-            this.bodyHeight     = bodyStyle.height;
-            bodyStyle.width     = "100%";
-            bodyStyle.height    = "100%";
+            this.elementMargin = this.element.style.margin;
+            this.element.style.margin = "0";
+            this.elementPadding = this.element.style.padding;
+            this.element.style.padding = "0";
+
+            this.bodyMargin = bodyStyle.margin;
+            this.docMargin = docStyle.margin;
+            bodyStyle.margin = "0";
+            docStyle.margin = "0";
+
+            this.bodyPadding = bodyStyle.padding;
+            this.docPadding = docStyle.padding;
+            bodyStyle.padding = "0";
+            docStyle.padding = "0";
+
+            this.bodyWidth = bodyStyle.width;
+            this.bodyHeight = bodyStyle.height;
+            bodyStyle.width = "100%";
+            bodyStyle.height = "100%";
 
             //when entering full screen on the ipad it wasnt sufficient to leave
             //the body intact as only only the top half of the screen would
@@ -666,16 +711,17 @@ $.extend( $.Viewer.prototype, $.EventHandler.prototype, $.ControlDock.prototype,
             this.previousBody = [];
             THIS[ this.hash ].prevElementParent = this.element.parentNode;
             THIS[ this.hash ].prevNextSibling = this.element.nextSibling;
-            THIS[ this.hash ].prevElementSize = $.getElementSize( this.element );
+            THIS[ this.hash ].prevElementWidth = this.element.style.width;
+            THIS[ this.hash ].prevElementHeight = this.element.style.height;
             nodes = body.childNodes.length;
-            for ( i = 0; i < nodes; i ++ ){
+            for ( i = 0; i < nodes; i++ ) {
                 this.previousBody.push( body.childNodes[ 0 ] );
                 body.removeChild( body.childNodes[ 0 ] );
             }
 
             //If we've got a toolbar, we need to enable the user to use css to
             //preserve it in fullpage mode
-            if( this.toolbar && this.toolbar.element ){
+            if ( this.toolbar && this.toolbar.element ) {
                 //save a reference to the parent so we can put it back
                 //in the long run we need a better strategy
                 this.toolbar.parentNode = this.toolbar.element.parentNode;
@@ -690,38 +736,10 @@ $.extend( $.Viewer.prototype, $.EventHandler.prototype, $.ControlDock.prototype,
             $.addClass( this.element, 'fullpage' );
             body.appendChild( this.element );
 
-            if( $.supportsFullScreen ){
-                THIS[ this.hash ].onfullscreenchange = function() {
-                    /*
-                        fullscreenchange events don't include the new fullscreen status so we need to
-                        retrieve the current status from the fullscreen API. See:
-                        https://developer.mozilla.org/en-US/docs/Web/Reference/Events/fullscreenchange
-                    */
+            this.element.style.height = $.getWindowSize().y + 'px';
+            this.element.style.width = $.getWindowSize().x + 'px';
 
-                    if( $.isFullScreen() ){
-                        _this.setFullPage( true );
-                    } else {
-                        _this.setFullPage( false );
-                    }
-                };
-
-                $.requestFullScreen( document.body );
-
-                // The target of the event is always the document,
-                // but it is possible to retrieve the fullscreen element through the API
-                // Note that the API is still vendor-prefixed in browsers implementing it
-                document.addEventListener(
-                    $.fullScreenEventName,
-                    THIS[ this.hash ].onfullscreenchange
-                );
-                this.element.style.height = '100%';
-                this.element.style.width = '100%';
-            }else{
-                this.element.style.height = $.getWindowSize().y + 'px';
-                this.element.style.width = $.getWindowSize().x + 'px';
-            }
-
-            if( this.toolbar && this.toolbar.element ){
+            if ( this.toolbar && this.toolbar.element ) {
                 this.element.style.height = (
                     $.getElementSize( this.element ).y - $.getElementSize( this.toolbar.element ).y
                 ) + 'px';
@@ -730,31 +748,25 @@ $.extend( $.Viewer.prototype, $.EventHandler.prototype, $.ControlDock.prototype,
             THIS[ this.hash ].fullPage = true;
 
             // mouse will be inside container now
-            $.delegate( this, onContainerEnter )();
-
+            $.delegate( this, onContainerEnter )( {} );
 
         } else {
 
-            if( $.supportsFullScreen ){
-                document.removeEventListener(
-                    $.fullScreenEventName,
-                    THIS[ this.hash ].onfullscreenchange
-                );
-                $.cancelFullScreen( document );
-            }
+            this.element.style.margin = this.elementMargin;
+            this.element.style.padding = this.elementPadding;
 
-            bodyStyle.overflow  = this.bodyOverflow;
-            docStyle.overflow   = this.docOverflow;
+            bodyStyle.margin = this.bodyMargin;
+            docStyle.margin = this.docMargin;
 
-            bodyStyle.width     = this.bodyWidth;
-            bodyStyle.height    = this.bodyHeight;
+            bodyStyle.padding = this.bodyPadding;
+            docStyle.padding = this.docPadding;
 
-            canvasStyle.backgroundColor = "";
-            canvasStyle.color           = "";
+            bodyStyle.width = this.bodyWidth;
+            bodyStyle.height = this.bodyHeight;
 
             body.removeChild( this.element );
             nodes = this.previousBody.length;
-            for ( i = 0; i < nodes; i++ ){
+            for ( i = 0; i < nodes; i++ ) {
                 body.appendChild( this.previousBody.shift() );
             }
 
@@ -766,75 +778,117 @@ $.extend( $.Viewer.prototype, $.EventHandler.prototype, $.ControlDock.prototype,
 
             //If we've got a toolbar, we need to enable the user to use css to
             //reset it to its original state
-            if( this.toolbar && this.toolbar.element ){
+            if ( this.toolbar && this.toolbar.element ) {
                 body.removeChild( this.toolbar.element );
 
                 //Make sure the user has some ability to style the toolbar based
                 //on the mode
                 $.removeClass( this.toolbar.element, 'fullpage' );
-                //this.toolbar.element.style.position = 'relative';
+
                 this.toolbar.parentNode.insertBefore(
                     this.toolbar.element,
                     this.toolbar.nextSibling
                 );
                 delete this.toolbar.parentNode;
                 delete this.toolbar.nextSibling;
-
-                //this.container.style.top = 'auto';
             }
 
-            this.element.style.height = THIS[ this.hash ].prevElementSize.y + 'px';
-            this.element.style.width = THIS[ this.hash ].prevElementSize.x + 'px';
+            this.element.style.width = THIS[ this.hash ].prevElementWidth;
+            this.element.style.height = THIS[ this.hash ].prevElementHeight;
+
+            // After exiting fullPage or fullScreen, it can take some time
+            // before the browser can actually set the scroll.
+            var restoreScrollCounter = 0;
+            var restoreScroll = function() {
+                $.setPageScroll( _this.pageScroll );
+                var pageScroll = $.getPageScroll();
+                restoreScrollCounter++;
+                if ( restoreScrollCounter < 10 &&
+                    pageScroll.x !== _this.pageScroll.x ||
+                    pageScroll.y !== _this.pageScroll.y ) {
+                    $.requestAnimationFrame( restoreScroll );
+                }
+            };
+            $.requestAnimationFrame( restoreScroll );
 
             THIS[ this.hash ].fullPage = false;
 
             // mouse will likely be outside now
-            $.delegate( this, onContainerExit )();
-
-
-        }
-        this.raiseEvent( 'fullpage', { fullpage: fullPage, viewer: this } );
-
-        if ( this.viewport ) {
-            oldBounds = this.viewport.getBounds();
-            this.viewport.resize( THIS[ this.hash ].prevContainerSize );
-            newBounds = this.viewport.getBounds();
-
-            if ( fullPage ) {
-                THIS[ this.hash ].fsBoundsDelta = new $.Point(
-                    newBounds.width  / oldBounds.width,
-                    newBounds.height / oldBounds.height
-                );
-            } else {
-                this.viewport.update();
-                this.viewport.zoomBy(
-                    Math.max(
-                        THIS[ this.hash ].fsBoundsDelta.x,
-                        THIS[ this.hash ].fsBoundsDelta.y
-                    ),
-                    null,
-                    true
-                );
-                //Ensures that if multiple viewers are on a page, the viewers that
-                //were hidden during fullpage are 'reopened'
-                for( hash in VIEWERS ){
-                    viewer = VIEWERS[ hash ];
-                    if( viewer !== this && viewer != this.navigator ){
-                        viewer.open( viewer.source );
-                        if( viewer.navigator ){
-                            viewer.navigator.open( viewer.source );
-                        }
-                    }
-                }
-            }
-
-            THIS[ this.hash ].forceRedraw = true;
-            updateOnce( this );
+            $.delegate( this, onContainerExit )( { } );
 
         }
+
+        this.raiseEvent( 'full-page', { fullPage: fullPage } );
+
         return this;
     },
 
+    /**
+     * Toggle full screen mode if supported. Toggle full page mode otherwise.
+     * @function
+     * @name OpenSeadragon.Viewer.prototype.setFullScreen
+     * @param {Boolean} fullScreen
+     *      If true, enter full screen mode.  If false, exit full screen mode.
+     * @return {OpenSeadragon.Viewer} Chainable.
+     */
+    setFullScreen: function( fullScreen ) {
+        var _this = this;
+
+        if ( !$.supportsFullScreen ) {
+            return this.setFullPage( fullScreen );
+        }
+
+        if ( $.isFullScreen() === fullScreen ) {
+            return this;
+        }
+
+        var fullScreeEventArgs = {
+            fullScreen: fullScreen,
+            preventDefaultAction: false
+        };
+        this.raiseEvent( 'pre-full-screen', fullScreeEventArgs );
+        if ( fullScreeEventArgs.preventDefaultAction ) {
+            return this;
+        }
+
+        if ( fullScreen ) {
+
+            this.setFullPage( true );
+            // If the full page mode is not actually entered, we need to prevent
+            // the full screen mode.
+            if ( !this.isFullPage() ) {
+                return this;
+            }
+
+            this.fullPageStyleWidth = this.element.style.width;
+            this.fullPageStyleHeight = this.element.style.height;
+            this.element.style.width = '100%';
+            this.element.style.height = '100%';
+
+            var onFullScreenChange = function() {
+                var isFullScreen = $.isFullScreen();
+                if ( !isFullScreen ) {
+                    $.removeEvent( document, $.fullScreenEventName, onFullScreenChange );
+                    $.removeEvent( document, $.fullScreenErrorEventName, onFullScreenChange );
+
+                    _this.setFullPage( false );
+                    if ( _this.isFullPage() ) {
+                        _this.element.style.width = _this.fullPageStyleWidth;
+                        _this.element.style.height = _this.fullPageStyleHeight;
+                    }
+                }
+                _this.raiseEvent( 'full-screen', { fullScreen: isFullScreen } );
+            };
+            $.addEvent( document, $.fullScreenEventName, onFullScreenChange );
+            $.addEvent( document, $.fullScreenErrorEventName, onFullScreenChange );
+
+            $.requestFullScreen( document.body );
+
+        } else {
+            $.cancelFullScreen();
+        }
+        return this;
+    },
 
     /**
      * @function
@@ -853,7 +907,7 @@ $.extend( $.Viewer.prototype, $.EventHandler.prototype, $.ControlDock.prototype,
      */
     setVisible: function( visible ){
         this.container.style.visibility = visible ? "" : "hidden";
-        this.raiseEvent( 'visible', { visible: visible, viewer: this } );
+        this.raiseEvent( 'visible', { visible: visible } );
         return this;
     },
 
@@ -959,7 +1013,7 @@ $.extend( $.Viewer.prototype, $.EventHandler.prototype, $.ControlDock.prototype,
             beginZoomingOutHandler  = $.delegate( this, beginZoomingOut ),
             doSingleZoomOutHandler  = $.delegate( this, doSingleZoomOut ),
             onHomeHandler           = $.delegate( this, onHome ),
-            onFullPageHandler       = $.delegate( this, onFullPage ),
+            onFullScreenHandler     = $.delegate( this, onFullScreen ),
             onFocusHandler          = $.delegate( this, onFocus ),
             onBlurHandler           = $.delegate( this, onBlur ),
             navImages               = this.navImages,
@@ -1034,7 +1088,7 @@ $.extend( $.Viewer.prototype, $.EventHandler.prototype, $.ControlDock.prototype,
                 srcGroup:   resolveUrl( this.prefixUrl, navImages.fullpage.GROUP ),
                 srcHover:   resolveUrl( this.prefixUrl, navImages.fullpage.HOVER ),
                 srcDown:    resolveUrl( this.prefixUrl, navImages.fullpage.DOWN ),
-                onRelease:  onFullPageHandler,
+                onRelease:  onFullScreenHandler,
                 onFocus:    onFocusHandler,
                 onBlur:     onBlurHandler
             }));
@@ -1065,7 +1119,16 @@ $.extend( $.Viewer.prototype, $.EventHandler.prototype, $.ControlDock.prototype,
         }
         return this;
     },
-
+    
+    /**
+     * Gets the active page of a sequence
+     * @function
+     * @name OpenSeadragon.Viewer.prototype.currentPage
+     * @return {Number}
+     */
+    currentPage: function () {
+        return THIS[ this.hash ].sequence;
+      },
 
     /**
      * @function
@@ -1075,11 +1138,36 @@ $.extend( $.Viewer.prototype, $.EventHandler.prototype, $.ControlDock.prototype,
     goToPage: function( page ){
         //page is a 1 based index so normalize now
         //page = page;
-        this.raiseEvent( 'page', { page: page, viewer: this } );
+        this.raiseEvent( 'page', { page: page } );
 
         if( this.tileSources.length > page ){
 
             THIS[ this.hash ].sequence = page;
+
+            this._updateSequenceButtons( page );
+
+            this.open( this.tileSources[ page ] );
+        }
+
+        if( $.isFunction( this.onPageChange ) ){
+            this.onPageChange({
+                page: page,
+                viewer: this
+            });
+        }
+        if( this.referenceStrip ){
+            this.referenceStrip.setFocus( page );
+        }
+        return this;
+    },
+
+    /**
+     * Updates the sequence buttons.
+     * @function
+     * @private
+     * @param {Number} Sequence Value
+     */
+    _updateSequenceButtons: function (page) {
 
             if( this.nextButton ){
                 if( ( this.tileSources.length - 1 ) === page  ){
@@ -1101,22 +1189,8 @@ $.extend( $.Viewer.prototype, $.EventHandler.prototype, $.ControlDock.prototype,
                     }
                 }
             }
-
-            this.open( this.tileSources[ page ] );
-        }
-
-        if( $.isFunction( this.onPageChange ) ){
-            this.onPageChange({
-                page: page,
-                viewer: this
-            });
-        }
-        if( this.referenceStrip ){
-            this.referenceStrip.setFocus( page );
-        }
-        return this;
-    },
-
+      },
+      
     /**
      * Display a message in the viewport
      * @function
@@ -1333,7 +1407,7 @@ function openTileSource( viewer, source ) {
     }
     VIEWERS[ _this.hash ] = _this;
 
-    _this.raiseEvent( 'open', { source: source, viewer: _this } );
+    _this.raiseEvent( 'open', { source: source } );
 
     return _this;
 }
@@ -1426,37 +1500,38 @@ function onBlur(){
 
 }
 
-function onCanvasClick( tracker, position, quick, shift ) {
+function onCanvasClick( event ) {
     var zoomPerClick,
         factor;
-    if ( this.viewport && quick ) {    // ignore clicks where mouse moved
+    if ( !event.preventDefaultAction && this.viewport && event.quick ) {    // ignore clicks where mouse moved
         zoomPerClick = this.zoomPerClick;
-        factor = shift ? 1.0 / zoomPerClick : zoomPerClick;
+        factor = event.shift ? 1.0 / zoomPerClick : zoomPerClick;
         this.viewport.zoomBy(
             factor,
-            this.viewport.pointFromPixel( position, true )
+            this.viewport.pointFromPixel( event.position, true )
         );
         this.viewport.applyConstraints();
     }
     this.raiseEvent( 'canvas-click', {
-        tracker: tracker,
-        position: position,
-        quick: quick,
-        shift: shift
+        tracker: event.eventSource,
+        position: event.position,
+        quick: event.quick,
+        shift: event.shift,
+        originalEvent: event.originalEvent
     });
 }
 
-function onCanvasDrag( tracker, position, delta, shift ) {
-    if ( this.viewport ) {
+function onCanvasDrag( event ) {
+    if ( !event.preventDefaultAction && this.viewport ) {
         if( !this.panHorizontal ){
-            delta.x = 0;
+            event.delta.x = 0;
         }
         if( !this.panVertical ){
-            delta.y = 0;
+            event.delta.y = 0;
         }
         this.viewport.panBy(
             this.viewport.deltaPointsFromPixels(
-                delta.negate()
+                event.delta.negate()
             )
         );
         if( this.constrainDuringPan ){
@@ -1464,83 +1539,89 @@ function onCanvasDrag( tracker, position, delta, shift ) {
         }
     }
     this.raiseEvent( 'canvas-drag', {
-        tracker: tracker,
-        position: position,
-        delta: delta,
-        shift: shift
+        tracker: event.eventSource,
+        position: event.position,
+        delta: event.delta,
+        shift: event.shift,
+        originalEvent: event.originalEvent
     });
 }
 
-function onCanvasRelease( tracker, position, insideElementPress, insideElementRelease ) {
-    if ( insideElementPress && this.viewport ) {
+function onCanvasRelease( event ) {
+    if ( event.insideElementPressed && this.viewport ) {
         this.viewport.applyConstraints();
     }
     this.raiseEvent( 'canvas-release', {
-        tracker: tracker,
-        position: position,
-        insideElementPress: insideElementPress,
-        insideElementRelease: insideElementRelease
+        tracker: event.eventSource,
+        position: event.position,
+        insideElementPressed: event.insideElementPressed,
+        insideElementReleased: event.insideElementReleased,
+        originalEvent: event.originalEvent
     });
 }
 
-function onCanvasScroll( tracker, position, scroll, shift ) {
+function onCanvasScroll( event ) {
     var factor;
-    if ( this.viewport ) {
-        factor = Math.pow( this.zoomPerScroll, scroll );
+    if ( !event.preventDefaultAction && this.viewport ) {
+        factor = Math.pow( this.zoomPerScroll, event.scroll );
         this.viewport.zoomBy(
             factor,
-            this.viewport.pointFromPixel( position, true )
+            this.viewport.pointFromPixel( event.position, true )
         );
         this.viewport.applyConstraints();
     }
     this.raiseEvent( 'canvas-scroll', {
-        tracker: tracker,
-        position: position,
-        scroll: scroll,
-        shift: shift
+        tracker: event.eventSource,
+        position: event.position,
+        scroll: event.scroll,
+        shift: event.shift,
+        originalEvent: event.originalEvent
     });
     //cancels event
     return false;
 }
 
-function onContainerExit( tracker, position, buttonDownElement, buttonDownAny ) {
-    if ( !buttonDownElement ) {
+function onContainerExit( event ) {
+    if ( !event.insideElementPressed ) {
         THIS[ this.hash ].mouseInside = false;
         if ( !THIS[ this.hash ].animating ) {
             beginControlsAutoHide( this );
         }
     }
     this.raiseEvent( 'container-exit', {
-        tracker: tracker,
-        position: position,
-        buttonDownElement: buttonDownElement,
-        buttonDownAny: buttonDownAny
+        tracker: event.eventSource,
+        position: event.position,
+        insideElementPressed: event.insideElementPressed,
+        buttonDownAny: event.buttonDownAny,
+        originalEvent: event.originalEvent
     });
 }
 
-function onContainerRelease( tracker, position, insideElementPress, insideElementRelease ) {
-    if ( !insideElementRelease ) {
+function onContainerRelease( event ) {
+    if ( !event.insideElementReleased ) {
         THIS[ this.hash ].mouseInside = false;
         if ( !THIS[ this.hash ].animating ) {
             beginControlsAutoHide( this );
         }
     }
     this.raiseEvent( 'container-release', {
-        tracker: tracker,
-        position: position,
-        insideElementPress: insideElementPress,
-        insideElementRelease: insideElementRelease
+        tracker: event.eventSource,
+        position: event.position,
+        insideElementPressed: event.insideElementPressed,
+        insideElementReleased: event.insideElementReleased,
+        originalEvent: event.originalEvent
     });
 }
 
-function onContainerEnter( tracker, position, buttonDownElement, buttonDownAny ) {
+function onContainerEnter( event ) {
     THIS[ this.hash ].mouseInside = true;
     abortControlsAutoHide( this );
     this.raiseEvent( 'container-enter', {
-        tracker: tracker,
-        position: position,
-        buttonDownElement: buttonDownElement,
-        buttonDownAny: buttonDownAny
+        tracker: event.eventSource,
+        position: event.position,
+        insideElementPressed: event.insideElementPressed,
+        buttonDownAny: event.buttonDownAny,
+        originalEvent: event.originalEvent
     });
 }
 
@@ -1577,8 +1658,11 @@ function updateOnce( viewer ) {
     containerSize = _getSafeElemSize( viewer.container );
     if ( !containerSize.equals( THIS[ viewer.hash ].prevContainerSize ) ) {
         // maintain image position
-        viewer.viewport.resize( containerSize, true );
+        var oldBounds = viewer.viewport.getBounds();
+        var oldCenter = viewer.viewport.getCenter();
+        resizeViewportAndRecenter(viewer, containerSize, oldBounds, oldCenter);
         THIS[ viewer.hash ].prevContainerSize = containerSize;
+        THIS[ viewer.hash ].forceRedraw = true;
     }
 
     animated = viewer.viewport.update();
@@ -1588,7 +1672,7 @@ function updateOnce( viewer ) {
     }
 
     if ( !THIS[ viewer.hash ].animating && animated ) {
-        viewer.raiseEvent( "animationstart" );
+        viewer.raiseEvent( "animation-start" );
         abortControlsAutoHide( viewer );
     }
 
@@ -1607,7 +1691,7 @@ function updateOnce( viewer ) {
     }
 
     if ( THIS[ viewer.hash ].animating && !animated ) {
-        viewer.raiseEvent( "animationfinish" );
+        viewer.raiseEvent( "animation-finish" );
 
         if ( !THIS[ viewer.hash ].mouseInside ) {
             beginControlsAutoHide( viewer );
@@ -1619,7 +1703,30 @@ function updateOnce( viewer ) {
     //viewer.profiler.endUpdate();
 }
 
+// This function resizes the viewport and recenters the image
+// as it was before resizing.
+// TODO: better adjust width and height. The new width and height
+// should depend on the image dimensions and on the dimensions
+// of the viewport before and after switching mode.
+function resizeViewportAndRecenter( viewer, containerSize, oldBounds, oldCenter ) {
+    var viewport = viewer.viewport;
 
+    viewport.resize( containerSize, true );
+
+    // We try to remove blanks as much as possible
+    var imageHeight = 1 / viewer.source.aspectRatio;
+    var newWidth = oldBounds.width <= 1 ? oldBounds.width : 1;
+    var newHeight = oldBounds.height <= imageHeight ?
+        oldBounds.height : imageHeight;
+
+    var newBounds = new $.Rect(
+        oldCenter.x - ( newWidth / 2.0 ),
+        oldCenter.y - ( newHeight / 2.0 ),
+        newWidth,
+        newHeight
+        );
+    viewport.fitBounds( newBounds, true );
+}
 
 ///////////////////////////////////////////////////////////////////////////////
 // Navigation Controls
@@ -1709,10 +1816,15 @@ function onHome() {
 }
 
 
-function onFullPage() {
-    this.setFullPage( !this.isFullPage() );
+function onFullScreen() {
+    if ( this.isFullPage() && !$.isFullScreen() ) {
+        // Is fullPage but not fullScreen
+        this.setFullPage( false );
+    } else {
+        this.setFullScreen( !this.isFullPage() );
+    }
     // correct for no mouseout event on change
-    if( this.buttons ){
+    if ( this.buttons ) {
         this.buttons.emulateExit();
     }
     this.fullPageButton.element.focus();

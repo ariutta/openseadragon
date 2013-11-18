@@ -43,7 +43,7 @@
  * @class
  * @name OpenSeadragon.Navigator
  * @extends OpenSeadragon.Viewer
- * @extends OpenSeadragon.EventHandler
+ * @extends OpenSeadragon.EventSource
  * @param {Object} options
  * @param {String} options.viewerId
  */
@@ -196,7 +196,7 @@ $.Navigator = function( options ){
 
 };
 
-$.extend( $.Navigator.prototype, $.EventHandler.prototype, $.Viewer.prototype, {
+$.extend( $.Navigator.prototype, $.EventSource.prototype, $.Viewer.prototype, {
 
     /**
      * @function
@@ -251,13 +251,13 @@ $.extend( $.Navigator.prototype, $.EventHandler.prototype, $.Viewer.prototype, {
  * @inner
  * @function
  */
-function onCanvasClick( tracker, position, quick, shift ) {
+function onCanvasClick( event ) {
     var newBounds,
         viewerPosition,
         dimensions;
     if (! this.drag) {
         if ( this.viewer.viewport ) {
-            viewerPosition = this.viewport.deltaPointsFromPixels(position);
+            viewerPosition = this.viewport.deltaPointsFromPixels( event.position );
             dimensions = this.viewer.viewport.getBounds().getSize();
             newBounds = new $.Rect(
                 viewerPosition.x - dimensions.x/2,
@@ -285,18 +285,18 @@ function onCanvasClick( tracker, position, quick, shift ) {
  * @inner
  * @function
  */
-function onCanvasDrag( tracker, position, delta, shift ) {
+function onCanvasDrag( event ) {
     if ( this.viewer.viewport ) {
         this.drag = true;
         if( !this.panHorizontal ){
-            delta.x = 0;
+            event.delta.x = 0;
         }
         if( !this.panVertical ){
-            delta.y = 0;
+            event.delta.y = 0;
         }
         this.viewer.viewport.panBy(
             this.viewport.deltaPointsFromPixels(
-                delta
+                event.delta
             )
         );
     }
@@ -308,8 +308,8 @@ function onCanvasDrag( tracker, position, delta, shift ) {
  * @inner
  * @function
  */
-function onCanvasRelease( tracker, position, insideElementPress, insideElementRelease ) {
-    if ( insideElementPress && this.viewer.viewport ) {
+function onCanvasRelease( event ) {
+    if ( event.insideElementPressed && this.viewer.viewport ) {
         this.viewer.viewport.applyConstraints();
     }
 }
@@ -320,10 +320,10 @@ function onCanvasRelease( tracker, position, insideElementPress, insideElementRe
  * @inner
  * @function
  */
-function onCanvasScroll( tracker, position, scroll, shift ) {
+function onCanvasScroll( event ) {
     var factor;
     if ( this.viewer.viewport ) {
-        factor = Math.pow( this.zoomPerScroll, scroll );
+        factor = Math.pow( this.zoomPerScroll, event.scroll );
         this.viewer.viewport.zoomBy(
             factor,
             this.viewport.getCenter()

@@ -226,6 +226,9 @@
   * @param {Number} [options.maxImageCacheCount=100]
   *     The max number of images we should keep in memory (per drawer).
   *
+  * @param {Boolean} [options.useCanvas=true]
+  *     Set to false to not use an HTML canvas element for image rendering even if canvas is supported.
+  *
   * @param {Number} [options.minPixelRatio=0.5]
   *     The higher the minPixelRatio, the lower the quality of the image that
   *     is considered sufficient to stop rendering a given zoom level.  For
@@ -292,7 +295,6 @@ window.OpenSeadragon = window.OpenSeadragon || function( options ){
     // Save a reference to some core methods
     toString    = Object.prototype.toString,
     hasOwn      = Object.prototype.hasOwnProperty;
-
 
     /**
      * Taken from jQuery 1.6.1
@@ -384,6 +386,18 @@ window.OpenSeadragon = window.OpenSeadragon || function( options ){
         }
         return true;
     };
+
+
+    /**
+     * True if the browser supports the HTML5 canvas element
+     * @name $.supportsCanvas
+     * @property
+     */
+    $.supportsCanvas = (function () {
+        var canvasElement = document.createElement( 'canvas' );
+        return !!( $.isFunction( canvasElement.getContext ) &&
+                    canvasElement.getContext( '2d' ) );
+    }());
 
 
 }( OpenSeadragon ));
@@ -489,7 +503,8 @@ window.OpenSeadragon = window.OpenSeadragon || function( options ){
             xmlPath:                null,
             tileSources:            null,
             tileHost:               null,
-
+            initialPage:            0,
+            
             //PAN AND ZOOM SETTINGS AND CONSTRAINTS
             panHorizontal:          true,
             panVertical:            true,
@@ -516,6 +531,7 @@ window.OpenSeadragon = window.OpenSeadragon || function( options ){
             immediateRender:        false,
             minZoomImageRatio:      0.9, //-> closer to 0 allows zoom out to infinity
             maxZoomPixelRatio:      1.1, //-> higher allows 'over zoom' into pixels
+            pixelsPerWheelLine:     40,
 
             //DEFAULT CONTROL SETTINGS
             showSequenceControl:    true,  //SEQUENCE
@@ -558,6 +574,7 @@ window.OpenSeadragon = window.OpenSeadragon || function( options ){
             imageLoaderLimit:       0,
             maxImageCacheCount:     200,
             timeout:                30000,
+            useCanvas:              true,  // Use canvas element for drawing if available
 
             //INTERFACE RESOURCE SETTINGS
             prefixUrl:              "/images/",
@@ -700,6 +717,44 @@ window.OpenSeadragon = window.OpenSeadragon || function( options ){
 
 
         /**
+         * Determines the position of the upper-left corner of the element adjusted for current page and/or element scroll.
+         * @function
+         * @name OpenSeadragon.getElementOffset
+         * @param {Element|String} element - the element we want the position for.
+         * @returns {Point} - the position of the upper left corner of the element adjusted for current page and/or element scroll.
+         */
+        getElementOffset: function( element ) {
+            element = $.getElement( element );
+
+            var doc = element && element.ownerDocument,
+                docElement,
+                win,
+                boundingRect = { top: 0, left: 0 };
+
+            if ( !doc ) {
+                return new $.Point();
+            }
+
+            docElement = doc.documentElement;
+
+            if ( typeof element.getBoundingClientRect !== typeof undefined ) {
+                boundingRect = element.getBoundingClientRect();
+            }
+
+            win = ( doc == doc.window ) ?
+                doc :
+                ( doc.nodeType === 9 ) ?
+                    doc.defaultView || doc.parentWindow :
+                    false;
+
+            return new $.Point(
+                boundingRect.left + ( win.pageXOffset || docElement.scrollLeft ) - ( docElement.clientLeft || 0 ),
+                boundingRect.top + ( win.pageYOffset || docElement.scrollTop ) - ( docElement.clientTop || 0 )
+            );
+        },
+
+
+        /**
          * Determines the height and width of the given element.
          * @function
          * @name OpenSeadragon.getElementSize
@@ -804,7 +859,7 @@ window.OpenSeadragon = window.OpenSeadragon || function( options ){
 
 
         /**
-         * Determines the pages current scroll position.
+         * Determines the page's current scroll position.
          * @function
          * @name OpenSeadragon.getPageScroll
          * @returns {Point}
@@ -835,14 +890,64 @@ window.OpenSeadragon = window.OpenSeadragon || function( options ){
                     );
                 };
             } else {
-                $.getPageScroll = function(){
-                    return new $.Point(0,0);
-                };
+                // We can't reassign the function yet, as there was no scroll.
+                return new $.Point(0,0);
             }
 
             return $.getPageScroll();
         },
 
+        /**
+         * Set the page scroll position.
+         * @function
+         * @name OpenSeadragon.getPageScroll
+         * @returns {Point}
+         */
+        setPageScroll: function( scroll ) {
+            if ( typeof ( window.scrollTo ) !== "undefined" ) {
+                $.setPageScroll = function( scroll ) {
+                    window.scrollTo( scroll.x, scroll.y );
+                };
+            } else {
+                var originalScroll = $.getPageScroll();
+                if ( originalScroll.x === scroll.x &&
+                    originalScroll.y === scroll.y ) {
+                    // We are already correctly positioned and there
+                    // is no way to detect the correct method.
+                    return;
+                }
+
+                document.body.scrollLeft = scroll.x;
+                document.body.scrollTop = scroll.y;
+                var currentScroll = $.getPageScroll();
+                if ( currentScroll.x !== originalScroll.x &&
+                    currentScroll.y !== originalScroll.y ) {
+                    $.setPageScroll = function( scroll ) {
+                        document.body.scrollLeft = scroll.x;
+                        document.body.scrollTop = scroll.y;
+                    };
+                    return;
+                }
+
+                document.documentElement.scrollLeft = scroll.x;
+                document.documentElement.scrollTop = scroll.y;
+                currentScroll = $.getPageScroll();
+                if ( currentScroll.x !== originalScroll.x &&
+                    currentScroll.y !== originalScroll.y ) {
+                    $.setPageScroll = function( scroll ) {
+                        document.documentElement.scrollLeft = scroll.x;
+                        document.documentElement.scrollTop = scroll.y;
+                    };
+                    return;
+                }
+
+                // We can't find anything working, so we do nothing.
+                $.setPageScroll = function( scroll ) {
+                };
+            }
+
+            return $.setPageScroll( scroll );
+        },
 
         /**
          * Determines the size of the browsers window.
@@ -1103,34 +1208,25 @@ window.OpenSeadragon = window.OpenSeadragon || function( options ){
          * @param {String} eventName
          * @param {Function} handler
          * @param {Boolean} [useCapture]
-         * @throws {Error}
          */
-        addEvent: function( element, eventName, handler, useCapture ) {
-            element = $.getElement( element );
-
-            //TODO: Why do this if/else on every method call instead of just
-            //      defining this function once based on the same logic
-            if ( element.addEventListener ) {
-                $.addEvent = function( element, eventName, handler, useCapture ){
+        addEvent: (function () {
+            if ( window.addEventListener ) {
+                return function ( element, eventName, handler, useCapture ) {
                     element = $.getElement( element );
                     element.addEventListener( eventName, handler, useCapture );
                 };
-            } else if ( element.attachEvent ) {
-                $.addEvent = function( element, eventName, handler, useCapture ){
+            } else if ( window.attachEvent ) {
+                return function ( element, eventName, handler, useCapture ) {
                     element = $.getElement( element );
-                    element.attachEvent( "on" + eventName, handler );
+                    element.attachEvent( 'on' + eventName, handler );
                     if ( useCapture && element.setCapture ) {
                         element.setCapture();
                     }
                 };
             } else {
-                throw new Error(
-                    "Unable to attach event handler, no known technique."
-                );
+                throw new Error( "No known event model." );
             }
-
-            return $.addEvent( element, eventName, handler, useCapture );
-        },
+        }()),
 
 
         /**
@@ -1142,33 +1238,25 @@ window.OpenSeadragon = window.OpenSeadragon || function( options ){
          * @param {String} eventName
          * @param {Function} handler
          * @param {Boolean} [useCapture]
-         * @throws {Error}
          */
-        removeEvent: function( element, eventName, handler, useCapture ) {
-            element = $.getElement( element );
-
-            //TODO: Why do this if/else on every method call instead of just
-            //      defining this function once based on the same logic
-            if ( element.removeEventListener ) {
-                $.removeEvent = function( element, eventName, handler, useCapture ) {
+        removeEvent: (function () {
+            if ( window.removeEventListener ) {
+                return function ( element, eventName, handler, useCapture ) {
                     element = $.getElement( element );
                     element.removeEventListener( eventName, handler, useCapture );
                 };
-            } else if ( element.detachEvent ) {
-                $.removeEvent = function( element, eventName, handler, useCapture ) {
+            } else if ( window.detachEvent ) {
+                return function( element, eventName, handler, useCapture ) {
                     element = $.getElement( element );
-                    element.detachEvent("on" + eventName, handler);
+                    element.detachEvent( 'on' + eventName, handler );
                     if ( useCapture && element.releaseCapture ) {
                         element.releaseCapture();
                     }
                 };
             } else {
-                throw new Error(
-                    "Unable to detach event handler, no known technique."
-                );
+                throw new Error( "No known event model." );
             }
-            return $.removeEvent( element, eventName, handler, useCapture );
-        },
+        }()),
 
 
         /**

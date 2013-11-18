@@ -1,5 +1,5 @@
 /*
- * OpenSeadragon - EventHandler
+ * OpenSeadragon - EventSource
  *
  * Copyright (C) 2009 CodePlex Foundation
  * Copyright (C) 2010-2013 OpenSeadragon contributors
@@ -36,26 +36,22 @@
 
 /**
  * For use by classes which want to support custom, non-browser events.
- * TODO: This is an awful name!  This thing represents an "event source",
- *       not an "event handler".  PLEASE change the to EventSource. Also please
- *       change 'addHandler', 'removeHandler' and 'raiseEvent' to 'bind',
- *       'unbind', and 'trigger' respectively.  Finally add a method 'one' which
- *       automatically unbinds a listener after the first triggered event that
- *       matches.
+ * TODO: Add a method 'one' which automatically unbinds a listener after 
+ *       the first triggered event that matches.
  * @class
  */
-$.EventHandler = function() {
+$.EventSource = function() {
     this.events = {};
 };
 
-$.EventHandler.prototype = {
+$.EventSource.prototype = {
 
     /**
      * Add an event handler for a given event.
      * @function
      * @param {String} eventName - Name of event to register.
      * @param {Function} handler - Function to call when event is triggered.
-     * @param {Object} optional userData - Arbitrary object to be passed to the handler.
+     * @param {Object} [userData=null] - Arbitrary object to be passed unchanged to the handler.
      */
     addHandler: function ( eventName, handler, userData ) {
         var events = this.events[ eventName ];
@@ -125,8 +121,9 @@ $.EventHandler.prototype = {
                 length = events.length;
             for ( i = 0; i < length; i++ ) {
                 if ( events[ i ] ) {
+                    args.eventSource = source;
                     args.userData = events[ i ].userData;
-                    events[ i ].handler( source, args );
+                    events[ i ].handler( args );
                 }
             }
         };

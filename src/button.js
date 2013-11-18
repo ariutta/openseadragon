@@ -50,7 +50,7 @@ $.ButtonState = {
  * as fading the bottons out when the user has not interacted with them
  * for a specified period.
  * @class
- * @extends OpenSeadragon.EventHandler
+ * @extends OpenSeadragon.EventSource
  * @param {Object} options
  * @param {String} options.tooltip Provides context help for the button we the
  *  user hovers over it.
@@ -83,7 +83,7 @@ $.Button = function( options ) {
 
     var _this = this;
 
-    $.EventHandler.call( this );
+    $.EventSource.call( this );
 
     $.extend( true, this, {
 
@@ -109,7 +109,6 @@ $.Button = function( options ) {
     }, options );
 
     this.element        = options.element   || $.makeNeutralElement( "button" );
-    this.element.href   = this.element.href || '#';
 
     //if the user has specified the element to bind the control to explicitly
     //then do not add the default control images
@@ -152,13 +151,13 @@ $.Button = function( options ) {
     }
 
 
-    this.addHandler( "onPress",     this.onPress );
-    this.addHandler( "onRelease",   this.onRelease );
-    this.addHandler( "onClick",     this.onClick );
-    this.addHandler( "onEnter",     this.onEnter );
-    this.addHandler( "onExit",      this.onExit );
-    this.addHandler( "onFocus",     this.onFocus );
-    this.addHandler( "onBlur",      this.onBlur );
+    this.addHandler( "press",     this.onPress );
+    this.addHandler( "release",   this.onRelease );
+    this.addHandler( "click",     this.onClick );
+    this.addHandler( "enter",     this.onEnter );
+    this.addHandler( "exit",      this.onExit );
+    this.addHandler( "focus",     this.onFocus );
+    this.addHandler( "blur",      this.onBlur );
 
     this.currentState = $.ButtonState.GROUP;
 
@@ -175,59 +174,59 @@ $.Button = function( options ) {
         clickTimeThreshold: this.clickTimeThreshold,
         clickDistThreshold: this.clickDistThreshold,
 
-        enterHandler: function( tracker, position, buttonDownElement, buttonDownAny ) {
-            if ( buttonDownElement ) {
+        enterHandler: function( event ) {
+            if ( event.insideElementPressed ) {
                 inTo( _this, $.ButtonState.DOWN );
-                _this.raiseEvent( "onEnter", _this );
-            } else if ( !buttonDownAny ) {
+                _this.raiseEvent( "enter", { originalEvent: event.originalEvent } );
+            } else if ( !event.buttonDownAny ) {
                 inTo( _this, $.ButtonState.HOVER );
             }
         },
 
-        focusHandler: function( tracker, position, buttonDownElement, buttonDownAny ) {
-            this.enterHandler( tracker, position, buttonDownElement, buttonDownAny );
-            _this.raiseEvent( "onFocus", _this );
+        focusHandler: function ( event ) {
+            this.enterHandler( event );
+            _this.raiseEvent( "focus", { originalEvent: event.originalEvent } );
         },
 
-        exitHandler: function( tracker, position, buttonDownElement, buttonDownAny ) {
+        exitHandler: function( event ) {
             outTo( _this, $.ButtonState.GROUP );
-            if ( buttonDownElement ) {
-                _this.raiseEvent( "onExit", _this );
+            if ( event.insideElementPressed ) {
+                _this.raiseEvent( "exit", { originalEvent: event.originalEvent } );
             }
         },
 
-        blurHandler: function( tracker, position, buttonDownElement, buttonDownAny ) {
-            this.exitHandler( tracker, position, buttonDownElement, buttonDownAny );
-            _this.raiseEvent( "onBlur", _this );
+        blurHandler: function ( event ) {
+            this.exitHandler( event );
+            _this.raiseEvent( "blur", { originalEvent: event.originalEvent } );
         },
 
-        pressHandler: function( tracker, position ) {
+        pressHandler: function ( event ) {
             inTo( _this, $.ButtonState.DOWN );
-            _this.raiseEvent( "onPress", _this );
+            _this.raiseEvent( "press", { originalEvent: event.originalEvent } );
         },
 
-        releaseHandler: function( tracker, position, insideElementPress, insideElementRelease ) {
-            if ( insideElementPress && insideElementRelease ) {
+        releaseHandler: function( event ) {
+            if ( event.insideElementPressed && event.insideElementReleased ) {
                 outTo( _this, $.ButtonState.HOVER );
-                _this.raiseEvent( "onRelease", _this );
-            } else if ( insideElementPress ) {
+                _this.raiseEvent( "release", { originalEvent: event.originalEvent } );
+            } else if ( event.insideElementPressed ) {
                 outTo( _this, $.ButtonState.GROUP );
             } else {
                 inTo( _this, $.ButtonState.HOVER );
             }
         },
 
-        clickHandler: function( tracker, position, quick, shift ) {
-            if ( quick ) {
-                _this.raiseEvent("onClick", _this);
+        clickHandler: function( event ) {
+            if ( event.quick ) {
+                _this.raiseEvent("click", { originalEvent: event.originalEvent });
             }
         },
 
-        keyHandler: function( tracker, key ){
-            //console.log( "%s : handling key %s!", _this.tooltip, key);
-            if( 13 === key ){
-                _this.raiseEvent( "onClick", _this );
-                _this.raiseEvent( "onRelease", _this );
+        keyHandler: function( event ){
+            //console.log( "%s : handling key %s!", _this.tooltip, event.keyCode);
+            if( 13 === event.keyCode ){
+                _this.raiseEvent( "click", { originalEvent: event.originalEvent } );
+                _this.raiseEvent( "release", { originalEvent: event.originalEvent } );
                 return false;
             }
             return true;
@@ -238,7 +237,7 @@ $.Button = function( options ) {
     outTo( this, $.ButtonState.REST );
 };
 
-$.extend( $.Button.prototype, $.EventHandler.prototype, {
+$.extend( $.Button.prototype, $.EventSource.prototype, {
 
     /**
      * TODO: Determine what this function is intended to do and if it's actually
